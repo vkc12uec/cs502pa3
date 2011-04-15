@@ -1,5 +1,6 @@
 MODULE Queens;
 (* fengyan *)
+(* vkc *)
 (* fengyan *)
 (* A M3 program to solve the 8-queens problem *)
 
