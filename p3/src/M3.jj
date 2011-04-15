@@ -1,0 +1,821 @@
+/* Copyright (C) 1997-2003, Antony L Hosking.
+ * All rights reserved.  */
+
+options {
+  DEBUG_PARSER = false;
+  DEBUG_LOOKAHEAD = false;
+  DEBUG_TOKEN_MANAGER = false;
+  OUTPUT_DIRECTORY = "M3";
+  STATIC = false;
+  JDK_VERSION = "1.5";
+}
+PARSER_BEGIN(Parser)
+package M3;
+import java.util.*;
+public class Parser {
+    private static void usage() {
+        throw new Error("Usage: java M3.Parse <source>");
+    }
+
+    public static void main (String[] args) {
+        if (args.length != 1) usage();
+        try {
+            Parser parser = new Parser(new java.io.FileInputStream(args[0]));
+            parser.Unit();
+        } catch (Exception e) {
+            System.err.println(e.getMessage());
+        } catch (TokenMgrError e) {
+            System.err.println(e.getMessage());
+        }
+    }
+}
+PARSER_END(Parser)
+
+/**************************************************
+ * The M3 language lexical spec starts here       *
+ **************************************************/
+
+TOKEN_MGR_DECLS :
+{
+    int comment, pragma;
+    public static void main(String[] args) {
+        SimpleCharStream stream= new SimpleCharStream(System.in);
+        ParserTokenManager scanner = new ParserTokenManager(stream);
+        while (true) {
+            try {
+                Token token = scanner.getNextToken();
+                for (Token t = token.specialToken; t != null; t = t.specialToken)
+                    System.out.println(tokenImage[t.kind] + " " + t);
+                if (token.kind == EOF) break;
+                System.out.println(tokenImage[token.kind] + " " + token);
+            } catch (TokenMgrError e) {
+                System.err.println(e.getMessage());
+                scanner.ReInit(stream);
+            }
+        }
+    }
+}
+
+/* WHITE SPACE */
+<DEFAULT>
+SKIP :
+{
+  " " | "\t" | "\n" | "\r" | "\13" | "\f"
+}
+
+/* KEYWORDS */
+<DEFAULT>
+TOKEN : 
+{
+  "AND"     | "DO"        | "FROM"      | "NOT"       | "REPEAT" | "UNTIL"
+| "ANY"     | "ELSE"      | "GENERIC"   | "OBJECT"    | "RETURN" | "UNTRACED"
+| "ARRAY"   | "ELSIF"     | "IF"        | "OF"        | "REVEAL" | "VALUE"
+| "AS"      | "END"       | "IMPORT"    | "OR"        | "ROOT"   | "VAR"
+| "BEGIN"   | "EVAL"      | "IN"        | "OVERRIDES" | "SET"    | "WHILE"
+| "BITS"    | "EXCEPT"    | "INTERFACE" | "PROCEDURE" | "THEN"   | "WITH"
+| "BRANDED" | "EXCEPTION" | "LOCK"      | "RAISE"     | "TO"
+| "BY"      | "EXIT"      | "LOOP"      | "RAISES"    | "TRY"
+| "CASE"    | "EXPORTS"   | "METHODS"   | "READONLY"  | "TYPE"
+| "CONST"   | "FINALLY"   | "MOD"       | "RECORD"    | "TYPECASE"
+| "DIV"     | "FOR"       | "MODULE"    | "REF"       | "UNSAFE"
+}
+
+/* OPERATORS */
+<DEFAULT>
+TOKEN :
+{
+  "+" | "<"  | "#" | "=" | ";" | ".." | ":"
+| "-" | ">"  | "{" | "}" | "|" | ":=" | "<:"
+| "*" | "<=" | "(" | ")" | "^" | ","  | "=>"
+| "/" | ">=" | "[" | "]" | "." | "&"
+}
+
+/* COMMENTS */
+<DEFAULT,COMMENT>
+SKIP :
+{
+  "(*" { comment += 1; }: COMMENT
+}
+
+<COMMENT>
+SKIP :
+{
+  "*)" {
+    comment -= 1;
+    SwitchTo(comment == 0 ? DEFAULT: COMMENT);
+  }
+}
+
+<COMMENT>
+SKIP :
+{
+  <~[]>
+}
+
+/* ID */
+<DEFAULT>
+TOKEN :
+{
+  <ID: <LETTER> (<LETTER> | <DIGIT> | "_")* >
+| <#LETTER: ["A"-"Z","a"-"z"]>
+| <#DIGIT: ["0"-"9"]>
+}
+
+/* LITERAL */
+<DEFAULT>
+TOKEN :
+{
+  <NUMBER: <DIGIT> (<DIGIT>)* ("_" <HEX> (<HEX>)* )?>
+| <#HEX: ( <DIGIT> | ["A"-"F","a"-"f"] )>
+| <CHAR: "'" ( <PRINTING> | <ESCAPE> | "\"" ) "'">
+| <TEXT: "\"" ( <PRINTING> | <ESCAPE> | "'" )* "\"">
+| <#PRINTING: ( <LETTER> | <DIGIT> | <OTHER> )>
+| <#OTHER:  " " | "!" | "#" | "$" | "%" | "&" | "(" | ")"
+          | "*" | "+" | "," | "-" | "." | "/" | ":" | ";"
+          | "<" | "=" | ">" | "?" | "@" | "[" | "]" | "^"
+          | "_" | "`" | "{" | "|" | "}" | "~"
+          | ["\240"-"\377"] >
+| <#ESCAPE: "\\" ["n","t","r","f","\\","'","\""]
+          | "\\" ["0"-"7"] ["0"-"7"] ["0"-"7"]>
+}
+
+/* PRAGMAS */
+<DEFAULT>
+MORE :
+{
+  "<*": PRAGMA
+}
+
+<PRAGMA,PRAGMA_INLINE,PRAGMA_EXTERNAL,PRAGMA_IGNORED>
+MORE :
+{
+  " " | "\t" | "\n" | "\r" | "\13" | "\f"
+}
+
+<PRAGMA,PRAGMA_IGNORED>
+SPECIAL_TOKEN :
+{
+  <IGNORED: <END_PRAGMA>>
+  {
+    System.err.println("Line "
+        + matchedToken.beginLine
+        + ": warning: unrecognized pragma (ignored) ("
+        + image + ")");
+  }
+  : DEFAULT
+| <#END_PRAGMA: "*>">
+}
+
+<PRAGMA>
+MORE :
+{
+  "INLINE": PRAGMA_INLINE
+| "EXTERNAL": PRAGMA_EXTERNAL
+}
+
+<PRAGMA_INLINE>
+TOKEN :
+{
+  <INLINE: <END_PRAGMA>> { matchedToken.image = ""; SwitchTo(DEFAULT); }
+}
+
+<PRAGMA_EXTERNAL>
+TOKEN :
+{
+  <EXTERNAL: <END_PRAGMA>> { matchedToken.image = ""; SwitchTo(DEFAULT); }
+}
+
+<PRAGMA,PRAGMA_INLINE,PRAGMA_EXTERNAL,PRAGMA_IGNORED>
+MORE :
+{
+  "<*" { pragma += 1; } : PRAGMA_NESTED
+| <~[]>: PRAGMA_IGNORED
+}
+
+<PRAGMA_NESTED>
+MORE :
+{
+  "<*" { pragma += 1; }
+| "*>" { pragma -= 1; SwitchTo(pragma == 0 ? PRAGMA_IGNORED : PRAGMA_NESTED); }
+| <~[]>: PRAGMA_NESTED
+}
+
+/**************************************************
+ * The M3 language grammar starts here            *
+ **************************************************/
+
+Absyn.Decl.Module Unit () :
+{
+  Absyn.Decl.Module d;
+}
+{
+  (d = Interface() | d = Module())
+  { return d; }
+}
+
+Absyn.Decl.Module Interface () :
+{
+  Token begin, end, external = null, inline = null;
+  boolean header = true;
+  List<Absyn.Decl> decls = new LinkedList<Absyn.Decl>();
+}
+{
+  "INTERFACE" begin = <ID> ";"
+  ( ( external = <EXTERNAL> )*
+    Decl(external, inline, header, decls) )* "END" end = <ID> "."
+  {
+    if (!begin.image.equals(end.image)) {
+      throw new ParseException("Line " + end.beginLine
+      + ": error: Initial name " + begin
+      + " doesn't match final name " + end);
+    }
+    return new Absyn.Decl.Module(begin, decls, null);
+  }
+}
+
+Absyn.Decl.Module Module () :
+{
+  Token begin, end;
+  List<Absyn.Decl> decls = new LinkedList<Absyn.Decl>();
+  List<Absyn.Stmt> stmts = new LinkedList<Absyn.Stmt>();
+}
+{
+  "MODULE" begin = <ID> ";"
+  ( Decl(null, null, false, decls) )* "BEGIN" S(stmts) "END" end = <ID> "."
+  {
+    if (!begin.image.equals(end.image)) {
+      throw new ParseException("Line " + end.beginLine
+      + ": error: Initial name " + begin
+      + " doesn't match final name " + end);
+    }
+    return new Absyn.Decl.Module(begin, decls, stmts);
+  }
+}
+
+Absyn.Stmt Block () :
+{
+  List<Absyn.Decl> decls = new LinkedList<Absyn.Decl>();
+  List<Absyn.Stmt> stmts = new LinkedList<Absyn.Stmt>();
+}
+{
+  ( Decl(null, null, false, decls) )* "BEGIN" S(stmts) "END"
+  { return new Absyn.Stmt.Block(decls, stmts); }
+}
+
+void Decl (Token external, Token inline, boolean header, List<Absyn.Decl> decls) :
+{
+}
+{
+  "TYPE"
+  {
+    if (external != null)
+    {
+      System.err.println("Line " + external.beginLine
+      + ": warning: types cannot be external");
+      external = null;
+    }
+    if (inline != null)
+    {
+      System.err.println("Line " + inline.beginLine
+      + ": warning: types cannot be inline");
+      inline = null;
+    }
+  }
+  ( TypeDecl(decls) ";" )*
+| "VAR"
+  {
+    if (inline != null)
+    {
+      System.err.println("Line " + inline.beginLine
+      + ": warning: variables cannot be inline");
+      inline = null;
+    }
+  }
+  ( VarDecl(external, header, decls) ";"
+    { external = null; inline = null; } )*
+| "PROCEDURE" ProcDecl(external, inline, header, decls)
+| inline = <INLINE> Decl(external, inline, header, decls)
+}
+
+void TypeDecl (List<Absyn.Decl> decls) :
+{
+  Token id;
+  Absyn.Type type;
+}
+{
+  id = <ID> "=" type = Type()
+  { decls.add(new Absyn.Decl.Tipe(id, type)); }
+}
+
+Absyn.Decl.Variable VarDecl (Token external, boolean header, List<Absyn.Decl> decls) :
+{
+  Token id;
+  Absyn.Type type = null;
+  Absyn.Expr expr = null;
+  Absyn.Decl.Variable decl;
+  int index = decls.size();
+}
+{
+  id = <ID>
+  (
+    ":" type = Type()
+    [ ":=" expr = Expr() ]
+  | ":=" expr = Expr()
+  | ","
+    {
+      if (external != null) System.err.println("Line " + external.beginLine
+      + ": warning: EXTERNAL applies only to first variable");
+    }
+    decl = VarDecl(null, header, decls)
+    { type = decl.type; expr = decl.expr; }
+  )
+  {
+    if (expr != null) {
+      if (header) {
+        throw new ParseException("Line " + id.beginLine +
+        ": error: initialization of interface variables unsupported (" + id + ")");
+      } else if (external != null) {
+        throw new ParseException("Line " + id.beginLine +
+    ": error: <*EXTERNAL*> variables cannot be initialized");
+      }
+    }
+    decl = new Absyn.Decl.Variable(id, type, expr, external);
+    decls.add(index, decl);
+    return decl;
+  }
+}
+
+void ProcDecl (Token external, Token inline, boolean header, List<Absyn.Decl> decls) :
+{
+  Token begin, end = null;
+  Absyn.Type.Proc type;
+    List<Absyn.Decl> d = null;
+  List<Absyn.Stmt> s = null;
+}
+{
+  begin = <ID> type = Signature()
+  [ "="
+    {
+      d = new LinkedList<Absyn.Decl>();
+      s = new LinkedList<Absyn.Stmt>();
+    }
+    ( Decl(null, null, header, d) )* "BEGIN" S(s) "END" end = <ID>
+    {
+      if (header) {
+        throw new ParseException("Line " + begin.beginLine +
+        ": error: procedure declaration cannot include a body (" + begin + ")" );
+      }
+      if (external != null)
+      {
+        System.err.println("Line " + begin.beginLine +
+        ": warning: external procedure cannot include a body (" + begin + ")" );
+        external = null;
+      }
+      if (!begin.image.equals(end.image)) {
+        throw new ParseException("Line " + end.beginLine
+        + ": error: Initial name " + begin
+        + " doesn't match final name " + end);
+      }    
+    } 
+  ] ";"
+  {
+    if (!header && d == null && s == null)
+    {
+      throw new ParseException("Line " + begin.beginLine +
+      ": error: procedure declaration must include a body (" + begin + ")" );
+    }
+    decls.add(new Absyn.Decl.Procedure(begin, type, d, s, external));
+  }
+}
+
+Absyn.Type.Proc Signature () :
+{
+  Token t;
+  List<Absyn.Decl.Formal> formals = new LinkedList<Absyn.Decl.Formal>();
+  Absyn.Type type = null;
+}
+{
+  t = "(" Formals(formals) ")" [ ":" type = Type() ]
+  { return new Absyn.Type.Proc(t, formals, type); }
+}
+
+void Formals (List<Absyn.Decl.Formal> decls) :
+{
+  Absyn.Decl.Formal.Mode mode;
+}
+{
+  [ mode = Mode() Formal(mode, decls)
+    ( LOOKAHEAD(2) ";" mode = Mode() Formal(mode, decls) )* [";"] ]
+}
+
+Absyn.Decl.Formal.Mode Mode () :
+{
+  Absyn.Decl.Formal.Mode mode = Absyn.Decl.Formal.Mode.VALUE;
+}
+{
+  [ "VALUE"
+  | "VAR"      { mode = Absyn.Decl.Formal.Mode.VAR; }
+  | "READONLY" { mode = Absyn.Decl.Formal.Mode.READONLY; } ]
+  { return mode; }
+}
+
+Absyn.Type Formal (Absyn.Decl.Formal.Mode mode, List<Absyn.Decl.Formal> decls) :
+{
+  Token id;
+  Absyn.Type type;
+  int index = decls.size();
+}
+{
+  id = <ID> ( ":" type = Type()  | "," type = Formal(mode, decls) )
+  { decls.add(index, new Absyn.Decl.Formal(mode, id, type)); return type; }
+}
+
+Absyn.Stmt Stmt () :
+{
+  Absyn.Expr e;
+  Absyn.Stmt s;
+}
+{
+  ( e = Expr() [ s = AssignSt(e) { return s; } ]
+    {
+      if (!(e instanceof Absyn.Expr.Call)) {
+        throw new ParseException("Line " + e.line()
+        + ": error: expression is not a statement");
+      }
+      return new Absyn.Stmt.Call(e.token, (Absyn.Expr.Call)e);
+    }
+  | s = Block()
+  | s = ExitSt()
+  | s = EvalSt()
+  | s = ForSt()
+  | s = IfSt()
+  | s = LoopSt()
+  | s = RepeatSt()
+  | s = ReturnSt()
+  | s = WhileSt() )
+  { return s; }
+}
+
+void S (List<Absyn.Stmt> stmts) :
+{
+  Absyn.Stmt s;
+}
+{
+  [ s = Stmt() { stmts.add(s); }
+  ( LOOKAHEAD(2) ";" s = Stmt() { stmts.add(s); } )* [ ";" ] ]
+}
+
+Absyn.Stmt AssignSt (Absyn.Expr lhs) :
+{
+  Token t;
+  Absyn.Expr rhs;
+}
+{
+  t = ":=" rhs = Expr() { return new Absyn.Stmt.Assign(t, lhs, rhs); }
+}
+
+Absyn.Stmt ExitSt () :
+{ Token t; }
+{
+  t = "EXIT" { return new Absyn.Stmt.Exit(t); }
+}
+
+Absyn.Stmt EvalSt () :
+{ Token t; Absyn.Expr expr; }
+{
+  t = "EVAL" expr = Expr() { return new Absyn.Stmt.Eval(t, expr); }
+}
+
+Absyn.Stmt ForSt () :
+{
+  Token t, id;
+  Absyn.Expr from, to, by = null;
+  List<Absyn.Stmt> s = new LinkedList<Absyn.Stmt>();
+}
+{
+  t = "FOR" id = <ID> ":=" from = Expr() "TO" to = Expr()
+  [ "BY" by = Expr() ] "DO" S(s) "END"
+  { return new Absyn.Stmt.For(t, new Absyn.Decl.Variable(id, null, null, null), from, to, by, s); }
+}
+
+Absyn.Stmt IfSt () :
+{
+  Token t;
+  Absyn.Expr e;
+  List<Absyn.Stmt.If.Clause> clauses = new LinkedList<Absyn.Stmt.If.Clause>();
+  List<Absyn.Stmt> s;
+}
+{
+  t = "IF" e = Expr() "THEN" { s = new LinkedList<Absyn.Stmt>(); } S(s)
+  { clauses.add(new Absyn.Stmt.If.Clause(t, e, s)); }
+  ( t = "ELSIF" e = Expr() "THEN" { s = new LinkedList<Absyn.Stmt>(); } S(s)
+    { clauses.add(new Absyn.Stmt.If.Clause(t, e, s)); } )*
+  [ t = "ELSE" { s = new LinkedList<Absyn.Stmt>(); } S(s)
+    { clauses.add(new Absyn.Stmt.If.Clause(t, null, s)); } ]
+  "END"
+  { return new Absyn.Stmt.If(clauses); }
+}
+
+Absyn.Stmt LoopSt () :
+{
+  Token t;
+  List<Absyn.Stmt> s = new LinkedList<Absyn.Stmt>();
+}
+{
+  t = "LOOP" S(s) "END" { return new Absyn.Stmt.Loop(t, s); }
+}
+
+Absyn.Stmt RepeatSt () :
+{
+  Token t;
+  Absyn.Expr expr;
+  List<Absyn.Stmt> s = new LinkedList<Absyn.Stmt>();
+}
+{
+  t = "REPEAT" S(s) "UNTIL" expr = Expr()
+  { return new Absyn.Stmt.Repeat(t, s, expr); }
+}
+
+Absyn.Stmt ReturnSt () :
+{
+  Token t;
+  Absyn.Expr expr = null;
+}
+{
+  t = "RETURN" [ expr = Expr() ] { return new Absyn.Stmt.Return(t, expr); }
+}
+
+Absyn.Stmt WhileSt () :
+{
+  Token t;
+  Absyn.Expr expr;
+  List<Absyn.Stmt> s = new LinkedList<Absyn.Stmt>();
+}
+{
+  t = "WHILE" expr = Expr() "DO" S(s) "END"
+ { return new Absyn.Stmt.While(t, expr, s); }
+}
+
+void Actual (List<Absyn.Expr> exprs) :
+{
+  Absyn.Expr expr;
+  Absyn.Type type;
+}
+{
+  LOOKAHEAD((<ID> "OBJECT") | "OBJECT" | "ROOT" | "ARRAY" | "REF")
+  type = Type() { exprs.add(new Absyn.Expr.TypeExpr(type)); }
+| expr = E0() { exprs.add(expr); }
+}
+
+Absyn.Type Type () :
+{
+  Absyn.Type type;
+}
+{
+  ( type = NamedType() [ type = ObjectType(type) ]
+  | type = ArrayType()
+  | type = ObjectType(null)
+  | type = RefType())
+  { return type; }
+}
+
+Absyn.Type ArrayType () :
+{
+  Token t;
+  Absyn.Type type;
+}
+{
+  t = "ARRAY" "OF" type = Type()
+  { return new Absyn.Type.Array(t, type); }
+}
+
+Absyn.Type ObjectType (Absyn.Type type) :
+{
+  Token t;
+  LinkedList<Absyn.Decl.Field> fields;
+  LinkedList<Absyn.Decl.Method> m = null;
+  LinkedList<Absyn.Decl.Method> o = null;
+}
+{
+  ( { fields = new LinkedList<Absyn.Decl.Field>(); }
+    t = "OBJECT" Fields(fields)
+    { m = new LinkedList<Absyn.Decl.Method>(); }
+    ["METHODS" Methods(m)]
+    { o = new LinkedList<Absyn.Decl.Method>(); } 
+    ["OVERRIDES" Overrides(o)]
+    "END"
+    { type = new Absyn.Type.Object(t, type, fields, m, o); } )+
+  { return type; }
+}
+
+Absyn.Type RefType () :
+{
+  Token t;
+  Absyn.Type type;
+}
+{
+  t = "REF" type = Type()
+  { return new Absyn.Type.Ref(t, type); }
+}
+
+void Fields (LinkedList<Absyn.Decl.Field> decls) : {}
+{
+  [ Field(decls) (LOOKAHEAD(2) ";" Field(decls) )* [";"] ]
+}
+
+Absyn.Type Field (LinkedList<Absyn.Decl.Field> decls) :
+{
+  Token id;
+  Absyn.Type type;
+  int index = decls.size();
+}
+{
+  id = <ID> ( ":" type = Type() | "," type = Field(decls) )
+  { decls.add(index, new Absyn.Decl.Field(id, type)); return type; }
+}
+
+void Methods (List<Absyn.Decl.Method> decls) : {}
+{
+  [ Method(decls) ( LOOKAHEAD(2) ";" Method(decls) )* [";"] ]
+}
+
+void Method (List<Absyn.Decl.Method> decls) :
+{
+  Token id;
+  Absyn.Type.Proc type;
+  Absyn.Expr expr = null;
+}
+{
+  id = <ID> type = Signature() [ ":=" expr = ConstExpr() ]
+  { decls.add(new Absyn.Decl.Method(id, type, expr)); }
+}
+
+void Overrides (List<Absyn.Decl.Method> decls) : {}
+{
+  [ Override(decls) ( LOOKAHEAD(2) ";" Override(decls) )* [";"] ]
+}
+
+void Override (List<Absyn.Decl.Method> decls) :
+{
+  Token id;
+  Absyn.Expr expr;
+}
+{
+  id = <ID> ":=" expr = ConstExpr()
+  { decls.add(new Absyn.Decl.Method(id, null, expr)); }
+}
+
+Absyn.Expr ConstExpr () :
+{
+  Absyn.Expr expr;
+}
+{
+  expr = Expr()
+  { return expr; }
+}
+
+Absyn.Expr Expr () :
+{
+  Absyn.Expr expr;
+}
+{
+  expr = E0() { return expr; }
+}
+
+Absyn.Expr E0 () :
+{
+  Token t;
+  Absyn.Expr left, right;
+}
+{
+  left = E1()
+  ( t = "OR" right = E1() { left = new Absyn.Expr.Or(t, left, right); } )*
+  { return left; }
+}
+
+Absyn.Expr E1 () :
+{
+  Token t;
+  Absyn.Expr left, right;
+}
+{
+  left = E2()
+  (t = "AND" right = E2() { left = new Absyn.Expr.And(t, left, right); })*
+  { return left; }
+}
+
+Absyn.Expr E2 () :
+{
+  Token t;
+  Absyn.Expr expr;
+  int count = 0;
+}
+{
+  ( t = "NOT" expr = E2() { expr = new Absyn.Expr.Not(t, expr); }
+  | expr = E3() )
+  { return expr; }
+}
+
+Absyn.Expr E3 () :
+{
+  Token t; 
+  Absyn.Expr left, right;
+}
+{
+  left = E4()
+  ( t = "<"  right = E4() { left = new Absyn.Expr.Lt(t, left, right); }
+  | t = ">"  right = E4() { left = new Absyn.Expr.Gt(t, left, right); }
+  | t = "<=" right = E4() { left = new Absyn.Expr.Le(t, left, right); }
+  | t = ">=" right = E4() { left = new Absyn.Expr.Ge(t, left, right); }
+  | t = "="  right = E4() { left = new Absyn.Expr.Eq(t, left, right); }
+  | t = "#"  right = E4() { left = new Absyn.Expr.Ne(t, left, right); } )*
+  { return left; }
+}
+
+Absyn.Expr E4 () :
+{
+  Token t;
+  Absyn.Expr left, right;
+}
+{
+  left = E5()
+  ( t = "+" right = E5() { left = new Absyn.Expr.Add(t, left, right); }
+  | t = "-" right = E5() { left = new Absyn.Expr.Subtract(t, left, right); } )*
+  { return left; }
+}
+
+Absyn.Expr E5 () :
+{
+  Token t;
+  Absyn.Expr left, right;
+}
+{
+  left = E6()
+  ( t = "*" right = E6() { left = new Absyn.Expr.Multiply(t, left, right); }
+  | t = "DIV" right = E6() { left = new Absyn.Expr.Div(t, left, right); }
+  | t = "MOD" right = E6() { left = new Absyn.Expr.Mod(t, left, right); } )*
+  { return left; }
+}
+
+Absyn.Expr E6 () :
+{
+  Token t = null;
+  Absyn.Expr expr;
+  int p = 0, m = 0;
+}
+{
+  ( t = "+" expr = E6() { return new Absyn.Expr.Plus(t, expr); }
+  | t = "-" expr = E6() { return new Absyn.Expr.Minus(t, expr); } )
+  | expr = E7() { return expr; }
+}
+
+Absyn.Expr E7 () :
+{
+  Absyn.Expr expr;
+}
+{
+  expr = E8() ( expr = Selector(expr) )*
+  { return expr; }
+}
+
+Absyn.Expr E8 () :
+{
+  Token t;
+  Absyn.Expr expr;
+  Absyn.Type type;
+}
+{
+  t = <ID>     { return new Absyn.Expr.Named(t); }
+| t = <NUMBER> { return new Absyn.Expr.Number(t); }
+| t = <CHAR>   { return new Absyn.Expr.Char(t); }
+| t = <TEXT>   { return new Absyn.Expr.Text(t); }
+| "(" expr = E0() ")" { return expr; }
+}
+
+Absyn.Expr Selector (Absyn.Expr expr) :
+{
+  Token id, t;
+  Absyn.Expr index;
+  Absyn.Type type = null;
+  Absyn.Expr.Call call;
+  List<Absyn.Expr> actuals;
+}
+{
+  t = "^"
+  { return new Absyn.Expr.Deref(t, expr); }
+| t = "." id = <ID>
+  { return new Absyn.Expr.Qualify(t, expr, id); }
+| t = "[" index = E0() "]"
+  { return new Absyn.Expr.Subscript(t, expr, index); }
+| t = "(" { actuals = new LinkedList<Absyn.Expr>(); }
+  [ Actual(actuals) ( "," Actual(actuals) )* ] ")"
+  { return new Absyn.Expr.Call(t, expr, actuals); }
+}
+
+Absyn.Type NamedType () :
+{
+  Token t;
+}
+{
+  ( t = <ID> | t = "ROOT" ) { return new Absyn.Type.Named(t); }
+}
