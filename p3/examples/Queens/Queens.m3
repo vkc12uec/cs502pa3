@@ -1,4 +1,5 @@
 MODULE Queens;
+(* fengyan *)
 (* A M3 program to solve the 8-queens problem *)
 
 TYPE Queens = OBJECT
