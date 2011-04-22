@@ -5,6 +5,7 @@ package RegAlloc;
 import FlowGraph.AssemNode;
 import Assem.Instr;
 import Translate.Temp;
+import Translate.Temp.Label;
 
 import java.util.*;
 
@@ -14,11 +15,82 @@ public class Liveness extends InterferenceGraph {
     public List<Move> moves() {
         return moves;
     }
+    
+    public boolean isEqual (Set <Temp> orig, Set <Temp> curr){
+    	// orig will always be small than curr
+    	for (Temp t : curr){
+    		if(!orig.contains(t)){
+    			orig.addAll(curr);	// add to orig Set
+    			return false;
+    		}
+    	}
+    	return true;
+    }
 
     public Liveness(FlowGraph.AssemFlowGraph flow, Translate.Frame frame) {
         // TODO: Compute the interference graph representing liveness
         // information for the temporaris used and defined by the program represented
         // by flow.
+    	
+    	// populate move list here by each instr in node n
+    	
+    	/*
+    	         for (AssemNode n : nodes()) {
+            LinkedList<Assem.Instr> instrs = n.instrs;
+            for (Assem.Instr i : instrs) {
+                for (Temp u : i.use)
+                    if (!n.def.contains(u))
+                        n.use.add(u);
+                for (Temp d : i.def)
+                    n.def.add(d);
+            }
+            Assem.Instr i = instrs.getLast();
+            for (Label l : i.jumps) {
+                AssemNode t = blocks.get(l);
+                if (t != null)
+                    addEdge(n, t);
+            }
+        }
+    	 */
+    	
+    	boolean repeat = false;
+    	
+    	while (true){
+    		for (AssemNode n: flow.nodes()){
+    			Set<Temp> node_def = flow.def(n);
+    			Set<Temp> node_use = flow.use(n);
+    			
+    			// in = use + out -def
+    			// out = union (in [foreach succ(i) of n])
+    			
+    			LinkedHashSet<Temp> in = new LinkedHashSet<Temp>();
+    			LinkedHashSet<Temp> out = new LinkedHashSet<Temp>();
+    			
+    			for (Temp t : node_use){
+    				in.add(t);
+    			}
+    			for (Temp t : n.liveOut){
+    				in.add (t);
+    			}
+    			for (Temp t: node_def){
+    				in.remove(t);
+    			}
+    			
+    			Iterator<AssemNode> itr = n.succs.iterator();
+    			
+    			while(itr.hasNext()){
+    				for (Temp t : itr.next().liveIn){
+    					out.add(t);
+    				}
+    			}
+    			
+    			//check
+    			repeat |= isEqual(n.liveIn, in) | isEqual(n.liveOut, out);    			
+    		}
+    		if (!repeat)
+    			break;
+    		repeat = false;
+    	}	//while
     }
 
     public void show(java.io.PrintWriter out) {
