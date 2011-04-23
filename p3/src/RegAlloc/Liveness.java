@@ -55,7 +55,8 @@ public class Liveness extends InterferenceGraph {
     	
     	boolean repeat = false;
     	
-    	while (true){
+    	do {
+    		repeat = false;
     		for (AssemNode n: flow.nodes()){
     			Set<Temp> node_def = flow.def(n);
     			Set<Temp> node_use = flow.use(n);
@@ -76,21 +77,17 @@ public class Liveness extends InterferenceGraph {
     				in.remove(t);
     			}
     			
-    			Iterator<AssemNode> itr = n.succs.iterator();
-    			
-    			while(itr.hasNext()){
-    				for (Temp t : itr.next().liveIn){
-    					out.add(t);
-    				}
+    			for (AssemNode a : n.succs){
+    				out.addAll(a.liveIn);    			
     			}
     			
     			//check
-    			repeat |= isEqual(n.liveIn, in) | isEqual(n.liveOut, out);    			
+    			if (!n.liveIn.equals(in) || !n.liveOut.equals(out))
+    				repeat = true;    			
     		}
-    		if (!repeat)
-    			break;
-    		repeat = false;
-    	}	//while
+    		
+    	} while(repeat);
+    	
     }
 
     public void show(java.io.PrintWriter out) {
