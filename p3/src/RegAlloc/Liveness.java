@@ -84,8 +84,10 @@ public class Liveness extends InterferenceGraph {
     		
     	} while(repeat);
     	
-    //build();
-
+    build(flow);
+    }
+    
+    public void build(FlowGraph.AssemFlowGraph flow) {
 		for (AssemNode b : flow.nodes()) {
 			LinkedHashSet <Temp> live = new LinkedHashSet<Temp>(b.liveOut);
 			for (int i = b.instrs.size() - 1; i >= 0; i--) {
@@ -95,8 +97,14 @@ public class Liveness extends InterferenceGraph {
 					live.removeAll(arr2Set(inst.use));
 					LinkedHashSet <Temp> nodes = arr2Set(inst.def);
 					nodes.addAll(arr2Set(inst.use));
-					for (Temp n : nodes)
+					
+					for (Temp n : nodes){
+						Move x = null;
+						Node s = new Node (this, ((Instr.MOVE) inst).src());
+						Node d = new Node (this, ((Instr.MOVE) inst).dst());
+						x = new Move( s, d);		
 						t2N(n).moveList.add((Instr.MOVE)inst);		// where do we define these ?
+					}
 					moves.add((Instr.MOVE)inst);
 				}
 				
@@ -114,8 +122,9 @@ public class Liveness extends InterferenceGraph {
 				live.addAll(arr2Set(inst.use));
 			}
 		}
-	
-    }
+		
+		// Instr = Tiger.Move
+	}
     
     public void Addall (LinkedHashSet<Temp> l, Temp [] u){
     	l.addAll(arr2Set(u));
