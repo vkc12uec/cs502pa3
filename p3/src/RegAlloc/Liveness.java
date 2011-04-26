@@ -43,48 +43,40 @@ public class Liveness extends InterferenceGraph {
 	}
 	
     public Liveness(FlowGraph.AssemFlowGraph flow, Translate.Frame frame) {
-        // TODO: Compute the interference graph representing liveness
-        // information for the temporaris used and defined by the program represented
-        // by flow.
     	
-    	// populate move list here by each instr in node n TODO
-    	
-    	boolean repeat = false;
+    	boolean repeat;
     	
     	do {
     		repeat = false;
+    		
     		for (AssemNode n: flow.nodes()){
     			Set<Temp> node_def = flow.def(n);
     			Set<Temp> node_use = flow.use(n);
+    						
+    			// in'[n] <- in[n]
+    			// out'[n] <- out[n]
+    			LinkedHashSet<Temp> in = new LinkedHashSet<Temp>(n.liveIn);
+    			LinkedHashSet<Temp> out = new LinkedHashSet<Temp>(n.liveOut);
     			
-    			// in = use + out -def
-    			// out = union (in [foreach succ(i) of n])
+    			// in = use + (out - def)
+    			n.liveIn = new LinkedHashSet<Temp>(n.liveOut);
+    			n.liveIn.removeAll(node_def);
+    			n.liveIn.addAll(node_use);
     			
-    			LinkedHashSet<Temp> in = new LinkedHashSet<Temp>();
-    			LinkedHashSet<Temp> out = new LinkedHashSet<Temp>();
-    			
-    			for (Temp t : node_use){
-    				in.add(t);
-    			}
-    			for (Temp t : n.liveOut){
-    				in.add (t);
-    			}
-    			for (Temp t: node_def){
-    				in.remove(t);
-    			}
-    			
-    			for (AssemNode a : n.succs){
-    				out.addAll(a.liveIn);    			
+    			// out = union (in [foreach succ(s) of n])
+    			n.liveOut.clear();
+    			for (AssemNode sNode : n.succs){
+    				n.liveOut.addAll(sNode.liveIn);    			
     			}
     			
     			//check
     			if (!n.liveIn.equals(in) || !n.liveOut.equals(out))
     				repeat = true;    			
-    		}
+    		}//for
     		
     	} while(repeat);
     	
-    build(flow);
+    	build(flow);
     }
     
     public void build(FlowGraph.AssemFlowGraph flow) {
