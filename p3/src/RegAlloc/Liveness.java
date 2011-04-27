@@ -5,8 +5,6 @@ package RegAlloc;
 import FlowGraph.AssemNode;
 import Assem.Instr;
 import Translate.Temp;
-import Translate.Temp.Label;
-
 import java.util.*;
 
 public class Liveness extends InterferenceGraph {
@@ -16,33 +14,28 @@ public class Liveness extends InterferenceGraph {
         return moves;
     }
     
-	Set <Node> precolored = new LinkedHashSet <Node> ();
-	Set <Node> initial = new LinkedHashSet <Node> ();
-	Set <Node> simplifyWorklist = new LinkedHashSet <Node> (), freezeWorklist = new LinkedHashSet <Node> (),
-						spillWorklist = new LinkedHashSet <Node> (), spilledNodes = new LinkedHashSet <Node> (),
-						coalescedNodes = new LinkedHashSet <Node> (), coloredNodes = new LinkedHashSet <Node> ();
-	Stack <Node> selectStack = new Stack <Node> ();
-	Set <Move> worklistMoves = new LinkedHashSet <Move> ();
+    public Set <Node> precolored = new LinkedHashSet <Node> ();
+	//edge, node related variables
+	public LinkedHashSet<Edge> adjSet = new LinkedHashSet<Edge>();
 	
-	public Hashtable <Temp, Node> temp2Node = new Hashtable <Temp, Node> ();
-	
-	public LinkedHashSet<Temp> arr2Set(Temp []u){
-    	LinkedHashSet<Temp> lh = new LinkedHashSet<Temp>();
-    	for (Temp ui : u)	//int i =0 ;i < u.length; i++)
-    		lh.add(ui);
-    	return lh;
+	public LinkedHashSet<Temp> ArrayToSet(Temp[] arr){
+		LinkedHashSet<Temp> set = new LinkedHashSet<Temp>(Arrays.asList(arr));
+    	return set;
     }
     
-	private Node t2N(Temp t) {
-		Node n = temp2Node.get(t);
+	private Node getNode(Temp t) {
+		Node n = get(t);
+		
 		if (n == null) {
-			n = new Node(this,t);
-			temp2Node.put(t, n);
+			n = new Node(this, t);
+			put(t, n);
 		}
+		
 		return n;
 	}
 	
     public Liveness(FlowGraph.AssemFlowGraph flow, Translate.Frame frame) {
+    	//Liveness analysis for the CFG
     	
     	boolean repeat;
     	
@@ -76,82 +69,73 @@ public class Liveness extends InterferenceGraph {
     		
     	} while(repeat);
     	
-    	build(flow);
+    	//assign precolor registers
+    	LinkedHashSet<Temp> precolorTemp = ArrayToSet(frame.registers());
+    	for ( Temp t : precolorTemp) {
+    		Node n = new Node(this, t);
+    		n.color = t;
+			put(t, n);
+			precolored.add(n);
+    	}
+    	
+    	Build(flow);
+
     }
     
-    public void build(FlowGraph.AssemFlowGraph flow) {
+    private void Build(FlowGraph.AssemFlowGraph flow) {
 		for (AssemNode b : flow.nodes()) {
-			LinkedHashSet <Temp> live = new LinkedHashSet<Temp>(b.liveOut);
+			LinkedHashSet<Temp> live = new LinkedHashSet<Temp>(b.liveOut);
 			for (int i = b.instrs.size() - 1; i >= 0; i--) {
 				Instr inst = b.instrs.get(i);
 				
 				if (inst instanceof Instr.MOVE) {
-					live.removeAll(arr2Set(inst.use));
-					LinkedHashSet <Temp> nodes = arr2Set(inst.def);
-					nodes.addAll(arr2Set(inst.use));
+					live.removeAll(ArrayToSet(inst.use));
+					LinkedHashSet<Temp> nodes = ArrayToSet(inst.def);
+					nodes.addAll(ArrayToSet(inst.use));
 					
+					Move m = null;
+					Node s = getNode(((Instr.MOVE) inst).src());
+					Node d = getNode(((Instr.MOVE) inst).dst());
+					m = new Move(s, d);
+					moves.add(m);
 					for (Temp n : nodes){
-						Move x = null;
-						Node s = new Node (this, ((Instr.MOVE) inst).src());
-						Node d = new Node (this, ((Instr.MOVE) inst).dst());
-						x = new Move( s, d);		
-						t2N(n).moveList.add((Instr.MOVE)inst);		// where do we define these ?
-					}
-					moves.add((Instr.MOVE)inst);
-				}
-				
-				live.addAll(arr2Set(inst.def));
-				//)Addall(live, inst.def);	//live.addAll(inst.def);	CHECK is it pass by ref ?
-				
-				for (Temp d : inst.def){
-					Node n1 = new Node(this,d);
-					for (Temp l : live){
-						Node n2 = new Node(this,l);
-						addEdge(n1, n2);
+						getNode(n).moveList.add(m);
 					}
 				}
-				live.removeAll(arr2Set(inst.def));
-				live.addAll(arr2Set(inst.use));
+				
+				live.addAll(ArrayToSet(inst.def));
+				
+				for (Temp l : live){
+					Node ln = getNode(l);
+					//TODO spill cost
+					ln.spillCost++;
+					for (Temp d : inst.def){
+						Node dn = getNode(d);
+						addEdge(dn, ln);
+					}
+				}
+				
+				live.removeAll(ArrayToSet(inst.def));
+				live.addAll(ArrayToSet(inst.use));
 			}
 		}
-		
-		// Instr = Tiger.Move
 	}
     
-    public void Addall (LinkedHashSet<Temp> l, Temp [] u){
-    	l.addAll(arr2Set(u));
+    public void addEdge(Node n0, Node n1) {
+    	if (n0 != n1) {
+    		adjSet.add(new Edge(n0, n1));
+    		adjSet.add(new Edge(n1, n0));
+    		if (!precolored.contains(n0)) {
+    			n0.adjList.add(n1);
+    			n0.degree++;
+    		}
+    		if (!precolored.contains(n1)) {
+    			n1.adjList.add(n0);
+    			n1.degree++;
+    		}
+    	}
     }
     
-
-    
-    public void build(){
-    	/*Build only adds an interference edge between a node that is defined
-    	at some point and the nodes that are currently live at that point. It is not necessary
-    	to add interferences between nodes in the live set. These edges will be added when
-    	processing other blocks in the program*/
-		/*for (BasicBlock b : blocks) {
-			HashSet <Temp> live = new HashSet<Temp>(b.live_out);
-			for (int i = b.list.size() - 1; i >= 0; i--) {
-				TExp inst = b.list.get(i);
-				if (inst instanceof Move) {
-					live.removeAll(inst.livenessNode.use);
-					HashSet <Temp> nodes = new HashSet<Temp>(inst.livenessNode.def);
-					nodes.addAll(inst.livenessNode.use);
-					for (Temp n : nodes)
-						t2N(n).moveList.add((Move)inst);
-					worklistMoves.add((Move)inst);
-				}
-				live.addAll(inst.livenessNode.def);
-				for (Temp d : inst.livenessNode.def)
-					for (Temp l : live)
-						addEdge(l, d);
-				live.removeAll(inst.livenessNode.def);
-				live.addAll(inst.livenessNode.use);
-			}
-		}
-	*/
-    }
-
     public void show(java.io.PrintWriter out) {
         for (Node n : nodes()) {
             out.print(n.temp.toString());
@@ -168,5 +152,26 @@ public class Liveness extends InterferenceGraph {
             out.println(move.src.temp.toString());
         }
         out.flush();
+    }
+    
+    static public class Edge {
+    	public Node u = null;
+    	public Node v = null;
+    	public Edge(Node first, Node second) {
+    		u = first;
+    		v = second;
+    	}
+    	public int hashCode() {
+    		int hashu = u.hashCode();
+    		int hashv = v.hashCode();
+    		return (hashu + hashv) * hashv + hashu;
+    	}
+    	
+    	public boolean equals(Object other) {
+    		if (other instanceof Edge) {
+    			return (this.u == ((Edge)other).u) && (this.v == ((Edge)other).v);
+    		} else
+    			return false;
+    	}
     }
 }
