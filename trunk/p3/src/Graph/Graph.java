@@ -7,7 +7,7 @@ import java.util.Collection;
 public class Graph<K,N extends Node<K,N>> {
     private LinkedHashMap<K,N> nodes = new LinkedHashMap<K,N>();
 
-    N put(K k, N n) { return nodes.put(k, n); }
+    public N put(K k, N n) { return nodes.put(k, n); }
     public N get(K k) { return nodes.get(k); }
     public Collection<N> nodes() { return nodes.values(); }
     public int size() { return nodes.size(); }
