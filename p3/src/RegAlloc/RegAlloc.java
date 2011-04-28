@@ -15,7 +15,7 @@ import Assem.Instr;
 public class RegAlloc implements Temp.Map {
     FlowGraph.AssemFlowGraph cfg;
     Liveness ig;
-    public Set<Node> spills;
+    public Set<Temp> spills;
     Color color;
 
     public Temp get(Temp temp) {
@@ -27,33 +27,44 @@ public class RegAlloc implements Temp.Map {
     
     private void RewriteProgram(Translate.Frame frame, LinkedList<Instr> insns) {
     	// code generator
-    	Frame.CodeGen cg = frame.codegen();
+    	//Frame.CodeGen cg = frame.codegen();
     	// allocate memory for spill in frame
         LinkedHashMap<Temp, Access> spillMap = new LinkedHashMap<Temp, Access>();
-        for (Node n : spills) {
-        	Access acc = frame.allocLocal(n.temp);
-        	spillMap.put(n.temp, acc);
+        for (Temp t : spills) {
+        	Access acc = frame.allocLocal(null);
+        	spillMap.put(t, acc);
         }
+        // make a new instruction list
+        LinkedList<Instr> insnsCopy = new LinkedList<Instr>(insns);
+        insns.clear();
         // spill the instructions
-        for (Instr insn : insns) {
-        	for (int i = 0; i < insn.def.length; i++) {
-        		if (spills.contains(insn.def[i])) {
-        			Temp v = new Temp();
-        			Tree.Stm stm = new MOVE(spillMap.get(insn.def[i]).exp(frame.FP()), new TEMP(v));
-        			stm.accept(cg);
-        			LinkedList<Assem.Instr> insnsStr = cg.insns();
-        			insn.def[i] = v;
-        			insns.addAll(insns.indexOf(insn) + 1, insnsStr);
-        		}
-        	}
+        ListIterator<Instr> itr = insnsCopy.listIterator();
+        while(itr.hasNext()) {
+        	Instr insn = itr.next();
         	for (int i = 0; i < insn.use.length; i++) {
         		if (spills.contains(insn.use[i])) {
         			Temp v = new Temp();
-        			Tree.Stm stm = new MOVE(new TEMP(v), spillMap.get(insn.def[i]).exp(frame.FP()));
+        			Tree.Exp vFrame = spillMap.get(insn.use[i]).exp(frame.FP());
+        			Tree.Stm stm = new MOVE(new TEMP(v), vFrame);
+        			Frame.CodeGen cg = frame.codegen();
         			stm.accept(cg);
         			LinkedList<Assem.Instr> insnsFch = cg.insns();
         			insn.use[i] = v;
-        			insns.addAll(insns.indexOf(insn), insnsFch);
+        			insns.addAll(insnsFch);
+        		}
+        	}
+        	// insert between use and def
+        	insns.addLast(insn);
+        	for (int i = 0; i < insn.def.length; i++) {
+        		if (spills.contains(insn.def[i])) {
+        			Temp v = new Temp();
+        			Tree.Exp vFrame = spillMap.get(insn.def[i]).exp(frame.FP());
+        			Tree.Stm stm = new MOVE(vFrame, new TEMP(v));
+        			Frame.CodeGen cg = frame.codegen();
+        			stm.accept(cg);
+        			LinkedList<Assem.Instr> insnsStr = cg.insns();
+        			insn.def[i] = v;
+        			insns.addAll(insnsStr);
         		}
         	}
         }
@@ -73,7 +84,7 @@ public class RegAlloc implements Temp.Map {
             if (spills.isEmpty())
                 break;
             out.println("# Spills:");
-            for (Node s : spills)
+            for (Temp s : spills)
                 out.println(s);
             // rewrite programs
             RewriteProgram(frame, insns);
