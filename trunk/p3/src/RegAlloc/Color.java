@@ -42,8 +42,12 @@ public class Color {
 				constrainedMoves = new LinkedHashSet<Move>(), coalescedMoves = new LinkedHashSet<Move>();
 	public LinkedList<Move> worklistMoves = new LinkedList <Move> ();
 	
-    public Set<Node> spills() {
-    	return spilledNodes;
+    public Set<Temp> spills() {
+    	LinkedHashSet<Temp> spilledTemps = new LinkedHashSet<Temp>();
+    	for (Node n : spilledNodes) {
+    		spilledTemps.add(n.temp);
+    	}
+    	return spilledTemps;
     }
     
     public Set<Move> NodeMoves(Node n) {
