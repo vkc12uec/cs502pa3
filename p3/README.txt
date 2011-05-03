@@ -22,3 +22,8 @@ and functions are named after that of George's paper. We directly
 translate the psuedo-code to Java code.
 
 RegAlloc.java --- Implements "Main()" in George's paper.
+
+
+Run the program
+
+Only "-main" switch is tested.
